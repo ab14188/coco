@@ -15,13 +15,13 @@ typedef unsigned char uchar;      //using uchar as shorthand
 on tile[0] : in port buttons = XS1_PORT_4E; //port to access xCore-200 buttons
 on tile[0] : out port leds = XS1_PORT_4F;   //port to access xCore-200 LEDs
 
-on tile[0] : void memoryManagerA(chanend, chanend[3], streaming chanend[2]); 
-on tile[1] : void memoryManagerB(chanend, chanend[3], streaming chanend[2]);
+on tile[0] : void memoryManagerA(chanend, chanend[3], chanend[2]); 
+on tile[1] : void memoryManagerB(chanend, chanend[3], chanend[2]);
 on tile[1] : void workersA(chanend[3]);
 on tile[1] : void workersB(chanend[3]);
 uchar changePixel(uchar, int);  
 
-char infname[] = "test.pgm";     //put your input image path here
+char infname[]  = "test.pgm";     //put your input image path here
 char outfname[] = "testout.pgm"; //put your output image path here
 
 on tile[0] : port p_scl = XS1_PORT_1E;         //interface ports to accelerometer
@@ -125,13 +125,10 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc,  chanend toManage
             if(y >= IMHT/2 - 1) toManagerB <: val;
         }
     }
-   
-    int outA    = 0;
-    int outB    = 0;
-    int request = 0;
+
     while(1){
        select{ 
-        case fromButtons :> request :
+        case fromButtons :> int request :
           printf("received a request to output the file \n");
           if (request == 13) {
             toManagerB <: 1;
@@ -196,16 +193,16 @@ void workersA(chanend fromManagerA[3]){
 
   while(1){
     for(int j = 0; j < IMHT/2; j++){
-      if(j != 0)fromManagerA[0] :> firstL;
-      fromManagerA[1] :> toAnalyze;
-      fromManagerA[2] :> thirdL;    
-      
+      if (j == 0) fromManagerA[0] :> toAnalyze;
+      fromManagerA[1] :> thirdL;   
       for (int i = 0; i < IMWD; i++) {
         int liveN   = determineLiveN('a', i, j, firstL, toAnalyze, thirdL);
         uchar pixel = changePixel(toAnalyze.characters[i], liveN);
         analyzed.characters[i] = pixel; 
       }
-      fromManagerA[1] <: analyzed;
+      fromManagerA[0] <: analyzed;
+      firstL    = toAnalyze;
+      toAnalyze = thirdL;
     }
   }
 }
@@ -218,15 +215,20 @@ void workersB(chanend fromManagerB[3]){
 
   while(1){
     for(int j = 0; j < IMHT/2; j++){
-      fromManagerB[0] :> firstL;
-      fromManagerB[1] :> toAnalyze;
-      if(j != IMHT/2 - 1)fromManagerB[2] :> thirdL;    
+      if (j == 0 ){
+        fromManagerB[0] :> firstL;
+        fromManagerB[1] :> toAnalyze;
+      }
+      if (j < IMHT/2 - 1)fromManagerB[2] :> thirdL;
+
       for (int i = 0; i < IMWD; i++) {
         int liveN   = determineLiveN('b', i, j, firstL, toAnalyze, thirdL); 
         uchar pixel = changePixel(toAnalyze.characters[i], liveN);
         analyzed.characters[i] = pixel; 
       }
-      fromManagerB[1] <: analyzed;
+      fromManagerB[0] <: analyzed;
+      firstL    = toAnalyze;
+      toAnalyze = thirdL;
     }
   }
 }
@@ -240,7 +242,7 @@ uchar changePixel(uchar pixel, int liveN){
   return pixel; 
 }
 
-void memoryManagerA(chanend fromDistributor, chanend toWorkerA[3], streaming chanend toMemB[2]){
+void memoryManagerA(chanend fromDistributor, chanend toWorkerA[3], chanend toMemB[2]){
     uchar val;
     struct halfImage firstHalf;
     struct halfImage new;
@@ -254,32 +256,25 @@ void memoryManagerA(chanend fromDistributor, chanend toWorkerA[3], streaming cha
         else firstOfB.characters[x] = val;
       }
     }
-
+   
     int atRound = 1;
-
     while(1){
-      toMemB[0] <: firstHalf.lines[IMHT/2-1];
+      if (atRound > 1){
+        toMemB[1] :> firstOfB;
+        toMemB[0] <: firstHalf.lines[IMHT/2-1];
+      }
       for(int i = 0; i < IMHT/2; i++){ 
         if( i != 0 && i < IMHT/2 - 1){
-          toWorkerA[0] <: firstHalf.lines[i-1] ;
-          toWorkerA[1] <: firstHalf.lines[i] ;
-          toWorkerA[2] <: firstHalf.lines[i+1] ;
-          toWorkerA[1] :> analyzed;
-          new.lines[i] = analyzed;
+          toWorkerA[1] <: firstHalf.lines[i+1] ;
         }else if(i == 0){
-          toWorkerA[1] <: firstHalf.lines[i];
-          toWorkerA[2] <: firstHalf.lines[i+1];
-          toWorkerA[1] :> analyzed;
-          new.lines[i] = analyzed;
+          toWorkerA[0] <: firstHalf.lines[i];
+          toWorkerA[1] <: firstHalf.lines[i+1];
         }else if(i == IMHT/2 - 1){
-          toMemB[1] :> firstOfB;
-          toWorkerA[0] <: firstHalf.lines[i-1];
-          toWorkerA[1] <: firstHalf.lines[i];
-          toWorkerA[2] <: firstOfB;
-          toWorkerA[1] :> analyzed;
-          new.lines[i] = analyzed;
+          toWorkerA[1] <: firstOfB;
         }
 
+        toWorkerA[0] :> analyzed;
+        new.lines[i] = analyzed;
         select {
           case fromDistributor :> int output: 
             fromDistributor <: firstHalf;
@@ -288,13 +283,13 @@ void memoryManagerA(chanend fromDistributor, chanend toWorkerA[3], streaming cha
             break;
         }
       }
-      printf("Around %d\n", atRound);
-      atRound++;
+    //  printf("A round %d\n", atRound);
+    //  atRound++;
       firstHalf = new;
     }
 }
 
-void memoryManagerB(chanend fromDistributor, chanend toWorkerB[3], streaming chanend toMemA[2]){
+void memoryManagerB(chanend fromDistributor, chanend toWorkerB[3], chanend toMemA[2]){
     uchar val;
     struct halfImage secondHalf;
     struct halfImage new;
@@ -308,41 +303,34 @@ void memoryManagerB(chanend fromDistributor, chanend toWorkerB[3], streaming cha
         else secondHalf.lines[y-1].characters[x] = val;
       }
     }
+
     int atRound = 1;
     while(1){
-      toMemA[1] <: secondHalf.lines[0]; // passing a lot of stuff through channels takes time -- minimise this first
+      if (atRound > 1) {
+        toMemA[1] <: secondHalf.lines[0]; 
+        toMemA[0] :> lastOfA;
+      }
       for(int i = 0; i < IMHT/2; i++){ 
         if( i != 0 && i < IMHT/2 - 1){
-          toWorkerB[0] <: secondHalf.lines[i-1] ;
-          toWorkerB[1] <: secondHalf.lines[i] ;
           toWorkerB[2] <: secondHalf.lines[i+1] ;
-          toWorkerB[1] :> analyzed;
-          new.lines[i] = analyzed;
         }else if(i == 0){
-          toMemA[0] :> lastOfA;
           toWorkerB[0] <: lastOfA;
           toWorkerB[1] <: secondHalf.lines[i];
           toWorkerB[2] <: secondHalf.lines[i+1];
-          toWorkerB[1] :> analyzed;
-          new.lines[i] = analyzed;
-        }else if(i == IMHT/2 - 1){
-          toWorkerB[0] <: secondHalf.lines[i-1];
-          toWorkerB[1] <: secondHalf.lines[i];
-          toWorkerB[1] :> analyzed;
-          new.lines[i] = analyzed;
         }
+        toWorkerB[0] :> analyzed;
+        new.lines[i] = analyzed;
         
         select {
           case fromDistributor :> int output:
-            printf("message from dist in b\n");
             fromDistributor <: secondHalf;
             break;
           default:
             break;
         }
       }
-      printf("Bround %d\n", atRound);
-      atRound++;
+   //   printf("B round %d\n", atRound);
+   //   atRound++;
       secondHalf = new;
     }
 }
@@ -353,12 +341,13 @@ void memoryManagerB(chanend fromDistributor, chanend toWorkerB[3], streaming cha
 //
 /////////////////////////////////////////////////////////////////////////////////////////
 void DataOutStream(char outfname[], chanend c_in, chanend fromButtons, chanend toLEDs)
-{ // this should be listening forever  
+{  
   int res;
   struct Line analyzed;
   printf( "DataOutStream:Start...\n" );
 
   while(1){
+    //Compile each line of the image and write the image line-by-line
     select{
       case fromButtons :> int i:
         res = _openoutpgm( outfname, IMWD, IMHT );
@@ -376,7 +365,7 @@ void DataOutStream(char outfname[], chanend c_in, chanend fromButtons, chanend t
         break;
       default:
         break;
-    }  //Compile each line of the image and write the image line-by-line
+    }  
   }
 
   return;
@@ -437,7 +426,7 @@ int main(void) {
   chan buttonsToDist, c_inIO, c_outIO, c_control, buttonsToLEDs, buttonsToDataOut, fromDataToLEDs, fromDistributorToManagerA, fromDistributorToManagerB;    //extend your channel definitions here
   chan managerAToWorker[3];
   chan managerBToWorker[3];
-  streaming chan memTomem[2];
+  chan memTomem[2];
   par {
     on tile[0] : i2c_master(i2c, 1, p_scl, p_sda, 10);   //server thread providing accelerometer data
     on tile[0] : accelerometer(i2c[0],c_control);        //client thread reading accelerometer data
