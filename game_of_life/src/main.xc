@@ -7,7 +7,7 @@
 #include "pgmIO.h"
 #include "i2c.h"
 
-#define  IMHT 16                  //image height
+#define  IMHT 16                 //image height
 #define  IMWD 16                  //image width
 
 typedef unsigned char uchar;      //using uchar as shorthand
@@ -64,9 +64,7 @@ void DataInStream(char infname[], chanend c_out)
     _readinline( line, IMWD );
     for( int x = 0; x < IMWD; x++ ) {
       c_out <: line[ x ];
-      //printf( "-%4.1d ", line[ x ] ); //show image values
     }
-   // printf( "\n" );
   }
 
   _closeinpgm();
@@ -116,15 +114,16 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc,  chanend toManage
 
     printf( "Processing...\n" );
     
-    // if(y < IMHT/2)firstHalf.lines[y].characters[x] = val; -- this will be used to take a for loop out later on 
-    //     else firstOfB.characters[x] = val;
-    for( int y = 0; y < IMHT; y++ ) {   //go through all lines
-        for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
-            c_in :> val;                    //read the pixel value
-            if(y <= IMHT/2) toManagerA <: val;
-            if(y >= IMHT/2 - 1) toManagerB <: val;
+    for( int y = 0; y < IMHT; y++ ) {   
+        for( int x = 0; x < IMWD; x++ ) { 
+            c_in :> val;  
+            if(y < IMHT/2) first.lines[y].characters[x] = val;
+            if(y >= IMHT/2) second.lines[y - IMHT/2].characters[x] = val;
         }
     }
+
+    toManagerA <: first;
+    toManagerB <: second; 
 
     while(1){
        select{ 
@@ -141,6 +140,9 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc,  chanend toManage
               c_out <: analyzed;
             }
           }
+          break;
+        case fromAcc :> int tilted :
+          printf("tiltedddddddddddddddddd\n");
           break;
         default:
           break;
@@ -243,26 +245,19 @@ uchar changePixel(uchar pixel, int liveN){
 }
 
 void memoryManagerA(chanend fromDistributor, chanend toWorkerA[3], chanend toMemB[2]){
-    uchar val;
     struct halfImage firstHalf;
     struct halfImage new;
     struct Line firstOfB;
     struct Line analyzed;
 
-    for (int y = 0; y <= IMHT/2; y++){ // this is bad -- takes 2 more for loops take them out somehow 
-      for (int x = 0; x < IMWD; x++){
-        fromDistributor :> val;
-        if(y < IMHT/2)firstHalf.lines[y].characters[x] = val;
-        else firstOfB.characters[x] = val;
-      }
-    }
-   
+    fromDistributor :> firstHalf;
+
     int atRound = 1;
     while(1){
-      if (atRound > 1){
-        toMemB[1] :> firstOfB;
-        toMemB[0] <: firstHalf.lines[IMHT/2-1];
-      }
+      //-- took if out here --//
+      toMemB[1] :> firstOfB;
+      toMemB[0] <: firstHalf.lines[IMHT/2-1];
+
       for(int i = 0; i < IMHT/2; i++){ 
         if( i != 0 && i < IMHT/2 - 1){
           toWorkerA[1] <: firstHalf.lines[i+1] ;
@@ -283,33 +278,25 @@ void memoryManagerA(chanend fromDistributor, chanend toWorkerA[3], chanend toMem
             break;
         }
       }
-    //  printf("A round %d\n", atRound);
-    //  atRound++;
+      printf("A round %d\n", atRound);
+      atRound++;
       firstHalf = new;
     }
 }
 
 void memoryManagerB(chanend fromDistributor, chanend toWorkerB[3], chanend toMemA[2]){
-    uchar val;
     struct halfImage secondHalf;
     struct halfImage new;
     struct Line lastOfA;
     struct Line analyzed;
 
-    for (int y = 0; y <= IMHT/2; y++){
-      for (int x = 0; x < IMWD; x++){
-        fromDistributor :> val;
-        if(y == 0) lastOfA.characters[x] = val;
-        else secondHalf.lines[y-1].characters[x] = val;
-      }
-    }
+    fromDistributor :> secondHalf;
 
     int atRound = 1;
     while(1){
-      if (atRound > 1) {
-        toMemA[1] <: secondHalf.lines[0]; 
-        toMemA[0] :> lastOfA;
-      }
+      toMemA[1] <: secondHalf.lines[0]; 
+      toMemA[0] :> lastOfA;
+
       for(int i = 0; i < IMHT/2; i++){ 
         if( i != 0 && i < IMHT/2 - 1){
           toWorkerB[2] <: secondHalf.lines[i+1] ;
@@ -329,8 +316,8 @@ void memoryManagerB(chanend fromDistributor, chanend toWorkerB[3], chanend toMem
             break;
         }
       }
-   //   printf("B round %d\n", atRound);
-   //   atRound++;
+      printf("B round %d\n", atRound);
+      atRound++;
       secondHalf = new;
     }
 }
@@ -367,9 +354,7 @@ void DataOutStream(char outfname[], chanend c_in, chanend fromButtons, chanend t
         break;
     }  
   }
-
   return;
-
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -409,7 +394,7 @@ void accelerometer(client interface i2c_master_if i2c, chanend toDist) {
     if (!tilted) {
       if (x>30) {
         tilted = 1 - tilted;
-        //toDist <: 1;
+       // toDist <: tilted; // this is sending however not in a continuous fashion 
       }
     }
   }
