@@ -353,7 +353,7 @@
     </values>
   </arg>
 </fInfo>
-<fInfo name="DataOutStream" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="4">
+<fInfo name="DataOutStream" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="3">
   <arg num="0" specialize="false">
     <values>
       <value type="unknown"/>
@@ -365,11 +365,6 @@
     </values>
   </arg>
   <arg num="2" specialize="false">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-  <arg num="3" specialize="false">
     <values>
       <value type="unknown"/>
     </values>
@@ -420,7 +415,7 @@
 <fInfo name="accelerometer" global="true" specialize="true" noreturn="true" doNotSpecialize="false" numParams="2">
   <arg num="0" specialize="true">
     <values>
-      <value type="interface"><interfaceInfo index="0" type="dist" func="_Si2c_master_0" global="true" impUnit="../src/main.xc" impId="0" param="0"/></value>
+      <value type="interface"><interfaceInfo index="0" type="chan" isYielding="false"/></value>
     </values>
   </arg>
   <arg num="1" specialize="false">
@@ -430,7 +425,7 @@
   </arg>
  <specializations>
    <specialization id="0">
-    <arg num="0"><values><value type="interface"><interfaceInfo index="0" type="dist" func="_Si2c_master_0" global="true" impUnit="../src/main.xc" impId="0" param="0"/></value></values></arg>
+    <arg num="0"><values><value type="interface"><interfaceInfo index="0" type="chan" isYielding="false"/></value></values></arg>
     <arg num="1"><values><value type="unknown"/></values></arg>
    </specialization>
  </specializations>
@@ -439,23 +434,13 @@
 </fInfo>
 <fInfo name="ack_write_request" global="true" interface="i2c_slave_callback_if" specialize="false" noreturn="false" doNotSpecialize="false" numParams="0">
 </fInfo>
-<fInfo name="buttonCommands" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="4">
+<fInfo name="buttonCommands" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="2">
   <arg num="0" specialize="false">
     <values>
       <value type="unknown"/>
     </values>
   </arg>
   <arg num="1" specialize="false">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-  <arg num="2" specialize="false">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-  <arg num="3" specialize="false">
     <values>
       <value type="unknown"/>
     </values>
@@ -524,7 +509,7 @@
     </values>
   </arg>
 </fInfo>
-<fInfo name="distributor" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="6">
+<fInfo name="distributor" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="7">
   <arg num="0" specialize="false">
     <values>
       <value type="unknown"/>
@@ -555,6 +540,11 @@
       <value type="unknown"/>
     </values>
   </arg>
+  <arg num="6" specialize="false">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
 </fInfo>
 <fInfo name="get_read_data" global="true" interface="i2c_master_async_if" specialize="false" noreturn="false" doNotSpecialize="false" numParams="2">
   <arg num="0" specialize="false">
@@ -575,7 +565,7 @@
 <fInfo name="i2c_master" global="true" specialize="true" noreturn="false" doNotSpecialize="false" numParams="5">
   <arg num="0" specialize="false">
     <values>
-      <value type="interface"><interfaceInfo index="0" type="dist" func="_Si2c_master_0" global="true" impUnit="../src/main.xc" impId="0" param="0"/></value>
+      <value type="interface"><interfaceInfo index="0" type="chan" isYielding="false"/></value>
       <value type="interface"><interfaceInfo index="0" type="dist" func="i2c_master" global="true" impUnit="C:/Users/Anne-Claire Bourland/workspace/farm/COMS20001/lib_i2c/src/i2c_master_async.xc" impId="0" param="0"/></value>
     </values>
   </arg>
@@ -737,7 +727,7 @@
     </values>
   </arg>
 </fInfo>
-<fInfo name="lightLEDs" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="3">
+<fInfo name="lightLEDs" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="4">
   <arg num="0" specialize="false">
     <values>
       <value type="unknown"/>
@@ -749,6 +739,11 @@
     </values>
   </arg>
   <arg num="2" specialize="false">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+  <arg num="3" specialize="false">
     <values>
       <value type="unknown"/>
     </values>
@@ -765,7 +760,7 @@
     </values>
   </arg>
 </fInfo>
-<fInfo name="memoryManagerA" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="3">
+<fInfo name="memoryManagerA" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="4">
   <arg num="0" specialize="false">
     <values>
       <value type="unknown"/>
@@ -777,6 +772,11 @@
     </values>
   </arg>
   <arg num="2" specialize="false">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+  <arg num="3" specialize="false">
     <values>
       <value type="unknown"/>
     </values>
@@ -870,7 +870,7 @@
 <fInfo name="read_acceleration" global="true" specialize="true" noreturn="false" doNotSpecialize="false" numParams="2">
   <arg num="0" specialize="true">
     <values>
-      <value type="interface"><interfaceInfo index="0" type="dist" func="_Si2c_master_0" global="true" impUnit="../src/main.xc" impId="0" param="0"/></value>
+      <value type="interface"><interfaceInfo index="0" type="chan" isYielding="false"/></value>
     </values>
   </arg>
   <arg num="1" specialize="true">
@@ -880,7 +880,7 @@
   </arg>
  <specializations>
    <specialization id="0">
-    <arg num="0"><values><value type="interface"><interfaceInfo index="0" type="dist" func="_Si2c_master_0" global="true" impUnit="../src/main.xc" impId="0" param="0"/></value></values></arg>
+    <arg num="0"><values><value type="interface"><interfaceInfo index="0" type="chan" isYielding="false"/></value></values></arg>
     <arg num="1"><values><value type="intval"><intval isSigned="true" val="1"/></value></values></arg>
    </specialization>
  </specializations>
@@ -1122,7 +1122,7 @@
 </fInfo>
 <fCall name="i2c_master" global="true" callerUnit="../src/main.xc" numArgs="5" impId="0" specializationId="0">
 </fCall>
-<fCall name="accelerometer" global="true" callerUnit="../src/main.xc" numArgs="2" impId="1" specializationId="0">
+<fCall name="accelerometer" global="true" callerUnit="../src/main.xc" numArgs="2" impId="6" specializationId="0">
 </fCall>
 <fCall name="i2c_master" global="true" callerUnit="C:/Users/Anne-Claire Bourland/workspace/farm/COMS20001/lib_i2c/src/i2c_master_async.xc" numArgs="5" impId="0" specializationId="0">
 </fCall>

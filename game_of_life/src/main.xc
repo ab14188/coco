@@ -1,5 +1,4 @@
-// COMS20001 - Cellular Automaton Farm - Initial Code Skeleton
-// (using the XMOS i2c accelerometer demo)
+// COMS20001 - Cellular Automaton Farm - 
 
 #include <platform.h>
 #include <xs1.h>
@@ -7,21 +6,22 @@
 #include "pgmIO.h"
 #include "i2c.h"
   
-#define  IMHT 512                 //image height
-#define  IMWD 512                 //image width
+#define  IMHT 64                 //image height  
+#define  IMWD 64                 //image width
 
 typedef unsigned char uchar;      //using uchar as shorthand
 
 on tile[0] : in port buttons = XS1_PORT_4E; //port to access xCore-200 buttons
 on tile[0] : out port leds = XS1_PORT_4F;   //port to access xCore-200 LEDs
 
-on tile[0] : void memoryManagerA(chanend, chanend[3], chanend[2]); 
+on tile[1] : void memoryManagerA(chanend, chanend[3], chanend[2], chanend); 
 on tile[1] : void memoryManagerB(chanend, chanend[3], chanend[2]);
 on tile[1] : void workersA(chanend[3]);
 on tile[1] : void workersB(chanend[3]);
 int changePixel(int, int);  
+int totalLive(uchar);
 
-char infname[]  = "test512.pgm";     //put your input image path here
+char infname[]  = "test64.pgm";     //put your input image path here
 char outfname[] = "testout.pgm"; //put your output image path here
 
 on tile[0] : port p_scl = XS1_PORT_1E;         //interface ports to accelerometer
@@ -54,6 +54,7 @@ void DataInStream(char infname[], chanend c_out)
 {
   int res;
   uchar line[ IMWD ];
+  c_out :> int start;
   printf( "DataInStream: Start...\n" );
 
   //Open PGM file
@@ -76,78 +77,83 @@ void DataInStream(char infname[], chanend c_out)
   return;
 }
 
-void buttonCommands(in port press, chanend toLEDs, chanend toDataOut, chanend toDist){
-    int r;
-    while(1){
-        press when pinseq(15) :> r;
-        press when pinsneq(15) :> r;
-        if(r == 13){
-            toDist <: r;
-            toDataOut <: r;
-            toLEDs <: r;
-        }
-        else if(r == 14){
-          toLEDs <: r;
-          toDist <: r;
-        } 
-    }
+void buttonCommands(in port press, chanend toDist){
+  int r;
+  while(1){
+    press when pinseq(15) :> r;
+    press when pinsneq(15) :> r;
+    toDist <: r;
+  }
 }
 
-void lightLEDs(out port light, chanend fromButtons, chanend fromDataOut){
-    int r, d_out;
-    while(1){
-        fromButtons :> r;
-        if(r == 13) light <: 2;
-        else if( r== 14) light <: 3;
-        fromDataOut :> d_out;
-        if (d_out == 0)light <: 0;
+void lightLEDs(out port light, chanend fromDataOut, chanend fromDist, chanend fromA){
+  int r, d_out;
+  while(1){
+    select{
+      case fromDataOut :> d_out:
+        light <: d_out;
+        break;
+      case fromDist :> r:
+        light <: r;
+        break;
+      case fromA :> r:
+        light <: r;
+        break;
     }
+  }
 }
 
 
-void distributor(chanend c_in, chanend c_out, chanend fromAcc,  chanend toManagerA, chanend toManagerB, chanend fromButtons)
+void distributor(chanend c_in, chanend c_out, chanend fromAcc,  chanend toManagerA, chanend toManagerB, chanend fromButtons, chanend toLEDs)
 {
     uchar val;
     struct uLine line;
-    int value;
+    int value, command, start = 1, counter = 0;
     struct Line analyzed;
     struct halfImage first;
     struct halfImage second; 
     
     printf( "ProcessImage:Start, size = %dx%d\n", IMHT, IMWD );
     printf( "Waiting for button to be pressed...\n" );
-    fromButtons :> int value;
-
-    printf( "Processing...\n" );
+    while(start){
+        fromButtons :> command;
+        if(command == 14){
+          start = 0;
+          c_in <: 1;
+        }   
+        else if(command == 13) printf("Press other button to start\n");    
+    }
     
+    toLEDs <: 1;
     for( int y = 0; y < IMHT; y++ ) {   
-        for( int x = 0; x < IMWD; x++ ) { 
-            c_in :> val;
-            value = 0;
-            if (val == 255) value = 1;
-            if(y < IMHT/2) {
-              if (value == 1) first.lines[y].characters[x/8] |= value << (x%8);
-              else if (value == 0)first.lines[y].characters[x/8] &= ~(1 << (x%8));
-            }
-            else if(y >= IMHT/2){
-              if (value == 1) second.lines[y - IMHT/2].characters[x/8] |= value << (x%8);
-              else if (value == 0)second.lines[y - IMHT/2].characters[x/8] &= ~(1 << (x%8));
-            } 
+      for( int x = 0; x < IMWD; x++ ) { 
+        c_in :> val;
+        value = 0;
+        if (val == 255) value = 1;
+        if(y < IMHT/2) {
+          if (value == 1) first.lines[y].characters[x/8] |= value << (x%8);
+          else if (value == 0)first.lines[y].characters[x/8] &= ~(1 << (x%8));
         }
+        else if(y >= IMHT/2){
+          if (value == 1) second.lines[y - IMHT/2].characters[x/8] |= value << (x%8);
+          else if (value == 0)second.lines[y - IMHT/2].characters[x/8] &= ~(1 << (x%8));
+        } 
+      }
     }
 
     toManagerA <: first;
     toManagerB <: second; 
+    toLEDs <: 0;
 
     while(1){
        select{ 
         case fromButtons :> int request :
-          printf("received a request to output the file \n");
           if (request == 13) {
-            toManagerB <: 1;
-            toManagerA <: 1;
-            toManagerB :> second;
-            toManagerA :> first;
+            toManagerB  <: request;
+            toManagerA  <: request;
+            c_out       <: request;
+            toManagerB  :> second;
+            toManagerA  :> first;
 
             for(int x = 0; x < IMHT; x++){
               if( x < IMHT/2) analyzed = first.lines[x];
@@ -160,7 +166,9 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc,  chanend toManage
             }
           }
           break;
-        default:
+        case fromAcc :> int pause:
+          toManagerA <: pause;
+          toManagerB <: pause;
           break;
       }
     }
@@ -211,7 +219,9 @@ void workersA(chanend fromManagerA[3]){
   struct Line toAnalyze;
   struct Line thirdL;
   struct Line analyzed;
+
   while(1){
+    int totalL = 0;
     for(int j = 0; j < IMHT/2; j++){
       if (j == 0) fromManagerA[0] :> toAnalyze;
       fromManagerA[1] :> thirdL;   
@@ -220,11 +230,13 @@ void workersA(chanend fromManagerA[3]){
         int pixel = changePixel((toAnalyze.characters[i/8] >> (i%8)&1), liveN); 
         if (pixel == 1) analyzed.characters[i/8] |= pixel << (i%8);
         else if (pixel == 0)analyzed.characters[i/8] &= ~(1 << (i%8));
+        totalL += pixel;
       }
       fromManagerA[0] <: analyzed;
       firstL    = toAnalyze;
       toAnalyze = thirdL;
     }
+    fromManagerA[2] <: totalL;
   }
 }
 
@@ -235,6 +247,7 @@ void workersB(chanend fromManagerB[3]){
   struct Line analyzed;
 
   while(1){
+    int totalL = 0;
     for(int j = 0; j < IMHT/2; j++){
       if (j == 0 ){
         fromManagerB[0] :> firstL;
@@ -247,14 +260,15 @@ void workersB(chanend fromManagerB[3]){
         int pixel = changePixel((toAnalyze.characters[i/8] >> (i%8)&1), liveN);
         if (pixel == 1) analyzed.characters[i/8] |= pixel << (i%8);
         else if (pixel == 0)analyzed.characters[i/8] &= ~(1 << (i%8));
+        totalL += pixel;
       }
       fromManagerB[0] <: analyzed;
       firstL    = toAnalyze;
       toAnalyze = thirdL;
     }
+    fromManagerB[2] <: totalL;
   }
 }
-
 
 int changePixel(int pixel, int liveN){
   if (pixel == 1){
@@ -264,81 +278,102 @@ int changePixel(int pixel, int liveN){
   return pixel; 
 }
 
-void memoryManagerA(chanend fromDistributor, chanend toWorkerA[3], chanend toMemB[2]){
-    struct halfImage firstHalf;
-    struct halfImage new;
-    struct Line firstOfB;
-    struct Line analyzed;
+void memoryManagerA(chanend fromDistributor, chanend toWorkerA[3], chanend toMemB[2], chanend toLEDs){
+  struct halfImage firstHalf;
+  struct halfImage new;
+  struct Line firstOfB;
+  struct Line analyzed;
 
-    fromDistributor :> firstHalf;
-    int atRound = 1;
-    while(1){
-      //-- took if out here -- //
-      toMemB[1] :> firstOfB;
-      toMemB[0] <: firstHalf.lines[IMHT/2-1];
+  fromDistributor :> firstHalf;
+  int atRound = 0;
+  int output, liveNA, liveNB;
+  while(1){
+    toMemB[1] :> firstOfB;
+    toMemB[0] <: firstHalf.lines[IMHT/2-1];
 
-      for(int i = 0; i < IMHT/2; i++){ 
-        if( i != 0 && i < IMHT/2 - 1){
-          toWorkerA[1] <: firstHalf.lines[i+1] ;
-        }else if(i == 0){
-          toWorkerA[0] <: firstHalf.lines[i];
-          toWorkerA[1] <: firstHalf.lines[i+1];
-        }else if(i == IMHT/2 - 1){
-          toWorkerA[1] <: firstOfB;
-        }
-
-        toWorkerA[0] :> analyzed;
-        new.lines[i] = analyzed;
-        select {
-          case fromDistributor :> int output: 
-            fromDistributor <: firstHalf;
-            break;
-          default:
-            break;
-        }
+    for(int i = 0; i < IMHT/2; i++){ 
+      if( i != 0 && i < IMHT/2 - 1){
+        toWorkerA[1] <: firstHalf.lines[i+1] ;
+      }else if(i == 0){
+        toWorkerA[0] <: firstHalf.lines[i];
+        toWorkerA[1] <: firstHalf.lines[i+1];
+      }else if(i == IMHT/2 - 1){
+        toWorkerA[1] <: firstOfB;
       }
-      printf("A round %d\n", atRound);
-      atRound++;
-      firstHalf = new;
+
+      toWorkerA[0] :> analyzed;
+      new.lines[i] = analyzed;
+      select {
+        case fromDistributor :> output:
+          if (output == 13) {
+            printf("data out at round %d\n", atRound);
+            fromDistributor <: firstHalf;
+          }
+          else if(output == 1){
+            toMemB[1] :> liveNB;
+            printf("GAME PAUSED\n%d rounds have been processed so far\n", atRound); 
+            printf("Total number of live cells is: %d\n", liveNA + liveNB);
+
+            while(output){
+              toLEDs <: 8;
+              fromDistributor :> output;
+            }
+          toLEDs <: 0;
+          }
+          break;
+        default:
+          break;
+      }
     }
+    toWorkerA[2] :> liveNA;
+    if(atRound != 0 && atRound % 2 == 0 && output != 13) toLEDs <: 4;
+    else if(atRound % 2 != 0 && output != 13) toLEDs <: 0;
+    atRound++;
+    firstHalf = new;
+  }
 }
 
 void memoryManagerB(chanend fromDistributor, chanend toWorkerB[3], chanend toMemA[2]){
-    struct halfImage secondHalf;
-    struct halfImage new;
-    struct Line lastOfA;
-    struct Line analyzed;
+  struct halfImage secondHalf;
+  struct halfImage new;
+  struct Line lastOfA;
+  struct Line analyzed;
 
-    fromDistributor :> secondHalf;
+  fromDistributor :> secondHalf;
 
-    int atRound = 1;
-    while(1){
-      toMemA[1] <: secondHalf.lines[0]; 
-      toMemA[0] :> lastOfA;
+  int atRound = 0;
+  int liveNB;
+  while(1){
+    toMemA[1] <: secondHalf.lines[0]; 
+    toMemA[0] :> lastOfA;
 
-      for(int i = 0; i < IMHT/2; i++){ 
-        if( i != 0 && i < IMHT/2 - 1){
-          toWorkerB[2] <: secondHalf.lines[i+1] ;
-        }else if(i == 0){
-          toWorkerB[0] <: lastOfA;
-          toWorkerB[1] <: secondHalf.lines[i];
-          toWorkerB[2] <: secondHalf.lines[i+1];
-        }
-        toWorkerB[0] :> analyzed;
-        new.lines[i] = analyzed;
-        
-        select {
-          case fromDistributor :> int output:
-            fromDistributor <: secondHalf;
-            break;
-          default:
-            break;
-        }
+    for(int i = 0; i < IMHT/2; i++){ 
+      if( i != 0 && i < IMHT/2 - 1){
+        toWorkerB[2] <: secondHalf.lines[i+1] ;
+      }else if(i == 0){
+        toWorkerB[0] <: lastOfA;
+        toWorkerB[1] <: secondHalf.lines[i];
+        toWorkerB[2] <: secondHalf.lines[i+1];
       }
-      printf("B round %d\n", atRound);
-      atRound++;
-      secondHalf = new;
+      toWorkerB[0] :> analyzed;
+      new.lines[i] = analyzed;
+      
+      select {
+        case fromDistributor :> int output:
+          if(output == 13) fromDistributor <: secondHalf;
+          else if(output == 1){
+            toMemA[1] <: liveNB;
+            while(output) fromDistributor :> output;
+          }
+          break;
+        default:
+          break;
+      }
     }
+    toWorkerB[2] :> liveNB;
+    atRound++;
+    secondHalf = new;
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -346,28 +381,32 @@ void memoryManagerB(chanend fromDistributor, chanend toWorkerB[3], chanend toMem
 // Write pixel stream from channel c_in to PGM image file
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void DataOutStream(char outfname[], chanend c_in, chanend fromButtons, chanend toLEDs)
+void DataOutStream(char outfname[], chanend c_in, chanend toLEDs)
 {  
-  int res;
+  int res, i;
   struct uLine analyzed;
   printf( "DataOutStream:Start...\n" );
 
   while(1){
     //Compile each line of the image and write the image line-by-line
     select{
-      case fromButtons :> int i:
-        res = _openoutpgm( outfname, IMWD, IMHT );
-        if( res ) {
-          printf( "DataOutStream:Error opening %s\n.", outfname );
-          return;
+      case c_in :> i:
+        if(i == 13){
+          res = _openoutpgm( outfname, IMWD, IMHT );
+          if( res ) {
+            printf( "DataOutStream:Error opening %s\n.", outfname );
+            return;
+          }
+          toLEDs <: 2;
+          printf("Starting\n");
+          for( int y = 0; y < IMHT; y++ ) {
+            c_in :> analyzed;
+            _writeoutline(analyzed.characters, IMWD );
+          }
+          _closeoutpgm();
+          toLEDs <: 0;
+          printf( "DataOutStream:Done...\n" );
         }
-        for( int y = 0; y < IMHT; y++ ) {
-           c_in :> analyzed;
-          _writeoutline(analyzed.characters, IMWD );
-        }
-        _closeoutpgm();
-        toLEDs <: 0;
-        printf( "DataOutStream:Done...\n" );
         break;
       default:
         break;
@@ -384,7 +423,6 @@ void DataOutStream(char outfname[], chanend c_in, chanend fromButtons, chanend t
 void accelerometer(client interface i2c_master_if i2c, chanend toDist) {
   i2c_regop_res_t result;
   char status_data = 0;
-  int tilted = 0;
 
   // Configure FXOS8700EQ
   result = i2c.write_reg(FXOS8700EQ_I2C_ADDR, FXOS8700EQ_XYZ_DATA_CFG_REG, 0x01);
@@ -400,7 +438,6 @@ void accelerometer(client interface i2c_master_if i2c, chanend toDist) {
 
   //Probe the accelerometer x-axis forever
   while (1) {
-
     //check until new accelerometer data is available
     do {
       status_data = i2c.read_reg(FXOS8700EQ_I2C_ADDR, FXOS8700EQ_DR_STATUS, result);
@@ -410,12 +447,11 @@ void accelerometer(client interface i2c_master_if i2c, chanend toDist) {
     int x = read_acceleration(i2c, FXOS8700EQ_OUT_X_MSB);
 
     //send signal to distributor after first tilt
-    if (!tilted) {
-      if (x>30) {
-        tilted = 1 - tilted;
-       // toDist <: tilted; // this is sending however not in a continuous fashion 
-      }
-    }
+    if(x > 30){
+        toDist <: 1;
+    }else{
+      toDist <: 0; 
+    } 
   }
 }
 
@@ -427,22 +463,23 @@ void accelerometer(client interface i2c_master_if i2c, chanend toDist) {
 int main(void) {
 
   i2c_master_if i2c[1];               //interface to accelerometer
-  chan buttonsToDist, c_inIO, c_outIO, c_control, buttonsToLEDs, buttonsToDataOut, fromDataToLEDs, fromDistributorToManagerA, fromDistributorToManagerB;    //extend your channel definitions here
+  chan distToLEDs, AtoLEDs, buttonsToDist, c_inIO, c_outIO, c_control, fromDataToLEDs, fromDistributorToManagerA, fromDistributorToManagerB;    //extend your channel definitions here
   chan managerAToWorker[3];
   chan managerBToWorker[3];
   chan memTomem[2];
   par {
     on tile[0] : i2c_master(i2c, 1, p_scl, p_sda, 10);   //server thread providing accelerometer data
-    on tile[0] : accelerometer(i2c[0],c_control);        //client thread reading accelerometer data
     on tile[0] : DataInStream(infname, c_inIO);          //thread to read in a PGM image
-    on tile[0] : DataOutStream(outfname, c_outIO, buttonsToDataOut, fromDataToLEDs);       //thread to write out a PGM image
-    on tile[0] : distributor(c_inIO, c_outIO, c_control, fromDistributorToManagerA, fromDistributorToManagerB, buttonsToDist);//thread to coordinate work on image
-    on tile[0] : lightLEDs(leds, buttonsToLEDs, fromDataToLEDs);
-    on tile[0] : buttonCommands(buttons, buttonsToLEDs, buttonsToDataOut, buttonsToDist);
-    on tile[0] : memoryManagerA(fromDistributorToManagerA, managerAToWorker, memTomem);
+    on tile[0] : DataOutStream(outfname, c_outIO, fromDataToLEDs);       //thread to write out a PGM image
+    on tile[0] : distributor(c_inIO, c_outIO, c_control, fromDistributorToManagerA, fromDistributorToManagerB, buttonsToDist, distToLEDs);//thread to coordinate work on image
+    on tile[0] : lightLEDs(leds, fromDataToLEDs, distToLEDs, AtoLEDs);
+    on tile[0] : buttonCommands(buttons, buttonsToDist);
+    
+    on tile[1] : accelerometer(i2c[0],c_control);        //client thread reading accelerometer data
+    on tile[1] : memoryManagerA(fromDistributorToManagerA, managerAToWorker, memTomem, AtoLEDs);
     on tile[1] : memoryManagerB(fromDistributorToManagerB, managerBToWorker, memTomem);
     on tile[1] : workersB(managerBToWorker);
-    on tile[0] : workersA(managerAToWorker);
+    on tile[1] : workersA(managerAToWorker);
   }
   return 0;
 }
