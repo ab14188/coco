@@ -6,9 +6,9 @@
 #include <stdio.h>
 #include "pgmIO.h"
 #include "i2c.h"
-
-#define  IMHT 16                 //image height
-#define  IMWD 16                  //image width
+  
+#define  IMHT 512                 //image height
+#define  IMWD 512                 //image width
 
 typedef unsigned char uchar;      //using uchar as shorthand
 
@@ -19,9 +19,9 @@ on tile[0] : void memoryManagerA(chanend, chanend[3], chanend[2]);
 on tile[1] : void memoryManagerB(chanend, chanend[3], chanend[2]);
 on tile[1] : void workersA(chanend[3]);
 on tile[1] : void workersB(chanend[3]);
-uchar changePixel(uchar, int);  
+int changePixel(int, int);  
 
-char infname[]  = "test.pgm";     //put your input image path here
+char infname[]  = "test512.pgm";     //put your input image path here
 char outfname[] = "testout.pgm"; //put your output image path here
 
 on tile[0] : port p_scl = XS1_PORT_1E;         //interface ports to accelerometer
@@ -39,11 +39,15 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 #define FXOS8700EQ_OUT_Z_LSB 0x6
 
 struct Line{ // sturcture that holds a line of the image
-  uchar characters[IMWD];
+  uchar characters[IMWD/8];
 };
 
 struct halfImage{ // structure that holds half of the image
   struct Line lines[IMHT/2];
+};
+
+struct uLine{
+  uchar characters[IMWD];
 };
 
 void DataInStream(char infname[], chanend c_out)
@@ -104,6 +108,8 @@ void lightLEDs(out port light, chanend fromButtons, chanend fromDataOut){
 void distributor(chanend c_in, chanend c_out, chanend fromAcc,  chanend toManagerA, chanend toManagerB, chanend fromButtons)
 {
     uchar val;
+    struct uLine line;
+    int value;
     struct Line analyzed;
     struct halfImage first;
     struct halfImage second; 
@@ -116,9 +122,17 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc,  chanend toManage
     
     for( int y = 0; y < IMHT; y++ ) {   
         for( int x = 0; x < IMWD; x++ ) { 
-            c_in :> val;  
-            if(y < IMHT/2) first.lines[y].characters[x] = val;
-            if(y >= IMHT/2) second.lines[y - IMHT/2].characters[x] = val;
+            c_in :> val;
+            value = 0;
+            if (val == 255) value = 1;
+            if(y < IMHT/2) {
+              if (value == 1) first.lines[y].characters[x/8] |= value << (x%8);
+              else if (value == 0)first.lines[y].characters[x/8] &= ~(1 << (x%8));
+            }
+            else if(y >= IMHT/2){
+              if (value == 1) second.lines[y - IMHT/2].characters[x/8] |= value << (x%8);
+              else if (value == 0)second.lines[y - IMHT/2].characters[x/8] &= ~(1 << (x%8));
+            } 
         }
     }
 
@@ -134,15 +148,17 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc,  chanend toManage
             toManagerA <: 1;
             toManagerB :> second;
             toManagerA :> first;
+
             for(int x = 0; x < IMHT; x++){
               if( x < IMHT/2) analyzed = first.lines[x];
               else analyzed = second.lines[x - IMHT/2];
-              c_out <: analyzed;
+              for (int i = 0; i<IMWD; i++) {
+                if (((analyzed.characters[i/8] >> i%8)&1) == 1) line.characters[i] = 255;
+                else line.characters[i] = 0;
+              }
+              c_out <: line;
             }
           }
-          break;
-        case fromAcc :> int tilted :
-          printf("tiltedddddddddddddddddd\n");
           break;
         default:
           break;
@@ -150,40 +166,43 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc,  chanend toManage
     }
 }
 
-int determineLiveN(char ab, int i, int atline, struct Line firstL, struct Line toAnalyze, struct Line thirdL){
-  int liveN  = 0;
-  if (ab == 'a' && atline == 0){
-    if (thirdL.characters[i] == 255)             liveN++;
-    if (i == 0 || i < IMWD - 1){
-      if (toAnalyze.characters[i + 1] == 255)    liveN++;
-      if (thirdL.characters[i + 1] == 255)       liveN++;
-    }else if (i != 0){
-      if (toAnalyze.characters[i - 1] == 255)    liveN++;
-      if (thirdL.characters[i - 1] == 255)       liveN++;
+
+int neighbours(int i, char exclusions, struct Line firstL, struct Line toAnalyze, struct Line thirdL){
+  int liveN = 0, at    = i/8, shift = 0, last  = 0;
+
+  if ((((thirdL.characters[i/8] >> (i%8)) &1) == 1) && (exclusions != 'b'))              liveN++;
+  if ((((firstL.characters[i/8] >> (i%8)) &1) == 1) && (exclusions != 'a'))              liveN++;
+  if (i < IMWD - 1){
+    if (exclusions == 'b' || exclusions == 'a') last = 1;
+    at      = i/8;
+    shift   = (i%8 + 1);
+    if (i%8 == 7) {
+      at    = (i+1)/8;
+      shift = 0;
     }
-  } else if (atline == IMHT/2 - 1 && ab == 'b'){
-    if (firstL.characters[i] == 255) liveN++;
-    if (i == 0 || i < IMWD - 1){
-      if (toAnalyze.characters[i + 1] == 255)    liveN++;
-      if (firstL.characters[i + 1] == 255)       liveN++;
-    }else if (i != 0){
-      if (toAnalyze.characters[i - 1] == 255)    liveN++;
-      if (firstL.characters[i - 1] == 255)       liveN++;
-    }
-  }else {
-    if (thirdL.characters[i] == 255)             liveN++;
-    if (firstL.characters[i] == 255)             liveN++;
-    if (i > 0){
-      if (firstL.characters[i - 1] == 255)         liveN++;
-      if (thirdL.characters[i - 1] == 255)         liveN++;
-      if (toAnalyze.characters[i - 1] == 255)      liveN++;
-    }
-    if (i < IMWD - 1){
-      if (thirdL.characters[i + 1] == 255)         liveN++;
-      if (firstL.characters[i + 1] == 255)         liveN++;
-      if (toAnalyze.characters[i + 1] == 255)      liveN++;
-    }
+    if ((((thirdL.characters[at] >> shift)&1) == 1) && (exclusions != 'b'))              liveN++;
+    if ((((firstL.characters[at] >> shift)&1)  == 1) && (exclusions != 'a'))             liveN++;
+    if (((toAnalyze.characters[at] >> shift)&1) == 1)                                    liveN++;
+  }                                                      
+  if (i > 0 && last!=1){
+    at      = i/8;
+    shift   = (i%8 - 1);
+    if (i%8 == 0){
+      at    = (i-1)/8;
+      shift = 7;
+    } 
+    if ((((thirdL.characters[at] >> shift)&1) == 1) && (exclusions != 'b'))              liveN++;
+    if ((((firstL.characters[at] >> shift)&1) == 1) && (exclusions != 'a'))              liveN++;
+    if (((toAnalyze.characters[at] >> shift)&1) == 1)                                    liveN++;
   }
+  return liveN; 
+}
+
+int determineLiveN(char ab, int i, int  atline, struct Line firstL, struct Line toAnalyze, struct Line thirdL){
+  char exclusions = 'c';
+  if (atline == (IMHT/2 - 1) && ab == 'b')  exclusions = 'b';
+  if (atline == 0 && ab == 'a')             exclusions = 'a';
+  int liveN = neighbours(i, exclusions, firstL, toAnalyze, thirdL);
   return liveN;
 }
 
@@ -192,15 +211,15 @@ void workersA(chanend fromManagerA[3]){
   struct Line toAnalyze;
   struct Line thirdL;
   struct Line analyzed;
-
   while(1){
     for(int j = 0; j < IMHT/2; j++){
       if (j == 0) fromManagerA[0] :> toAnalyze;
       fromManagerA[1] :> thirdL;   
       for (int i = 0; i < IMWD; i++) {
-        int liveN   = determineLiveN('a', i, j, firstL, toAnalyze, thirdL);
-        uchar pixel = changePixel(toAnalyze.characters[i], liveN);
-        analyzed.characters[i] = pixel; 
+        int liveN = determineLiveN('a', i, j, firstL, toAnalyze, thirdL);
+        int pixel = changePixel((toAnalyze.characters[i/8] >> (i%8)&1), liveN); 
+        if (pixel == 1) analyzed.characters[i/8] |= pixel << (i%8);
+        else if (pixel == 0)analyzed.characters[i/8] &= ~(1 << (i%8));
       }
       fromManagerA[0] <: analyzed;
       firstL    = toAnalyze;
@@ -224,9 +243,10 @@ void workersB(chanend fromManagerB[3]){
       if (j < IMHT/2 - 1)fromManagerB[2] :> thirdL;
 
       for (int i = 0; i < IMWD; i++) {
-        int liveN   = determineLiveN('b', i, j, firstL, toAnalyze, thirdL); 
-        uchar pixel = changePixel(toAnalyze.characters[i], liveN);
-        analyzed.characters[i] = pixel; 
+        int liveN   = determineLiveN('b', i, j, firstL, toAnalyze, thirdL);
+        int pixel = changePixel((toAnalyze.characters[i/8] >> (i%8)&1), liveN);
+        if (pixel == 1) analyzed.characters[i/8] |= pixel << (i%8);
+        else if (pixel == 0)analyzed.characters[i/8] &= ~(1 << (i%8));
       }
       fromManagerB[0] <: analyzed;
       firstL    = toAnalyze;
@@ -236,11 +256,11 @@ void workersB(chanend fromManagerB[3]){
 }
 
 
-uchar changePixel(uchar pixel, int liveN){
-  if (pixel == 255){
+int changePixel(int pixel, int liveN){
+  if (pixel == 1){
     if (liveN < 2 || liveN > 3) pixel = 0;
   }
-  else if (pixel == 0 && liveN == 3)pixel = 255;
+  else if (pixel == 0 && liveN == 3)pixel = 1;
   return pixel; 
 }
 
@@ -251,10 +271,9 @@ void memoryManagerA(chanend fromDistributor, chanend toWorkerA[3], chanend toMem
     struct Line analyzed;
 
     fromDistributor :> firstHalf;
-
     int atRound = 1;
     while(1){
-      //-- took if out here --//
+      //-- took if out here -- //
       toMemB[1] :> firstOfB;
       toMemB[0] <: firstHalf.lines[IMHT/2-1];
 
@@ -330,7 +349,7 @@ void memoryManagerB(chanend fromDistributor, chanend toWorkerB[3], chanend toMem
 void DataOutStream(char outfname[], chanend c_in, chanend fromButtons, chanend toLEDs)
 {  
   int res;
-  struct Line analyzed;
+  struct uLine analyzed;
   printf( "DataOutStream:Start...\n" );
 
   while(1){
